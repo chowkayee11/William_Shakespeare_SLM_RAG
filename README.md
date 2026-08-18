@@ -281,4 +281,4 @@ Hamlet delays his revenge because he wants stronger proof that Claudius is guilt
 - Improve hallucination resistance with stricter prompt validation
 - Add automated retrieval metrics such as recall@k and MRR
 - Package the project with a cleaner CLI entry point
-```
+

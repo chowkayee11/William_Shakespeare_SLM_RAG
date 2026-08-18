@@ -1,185 +1,284 @@
-# Shakespeare SLM/RAG System — CSCI433/933 Assignment 2
+# Shakespeare RAG Chatbot
 
-A domain-adapted Small Language Model (SLM) system with Retrieval-Augmented
-Generation (RAG) for answering questions about Shakespeare's plays:
-**Hamlet**, **Macbeth**, and **Romeo and Juliet**.
+A local-first Retrieval-Augmented Generation (RAG) chatbot for answering questions about Shakespeare's **Hamlet**, **Macbeth**, and **Romeo and Juliet**.
 
-## System Architecture
+The system retrieves relevant scene-level evidence from the plays, builds a grounded prompt, and uses a configurable small language model backend to generate beginner-friendly answers with act and scene references.
 
-```
+## Features
+
+- Scene-level retrieval over Shakespeare play data
+- Dense semantic search with `sentence-transformers/all-MiniLM-L6-v2`
+- Optional sparse and hybrid retrieval support
+- Configurable LLM backends:
+  - HuggingFace local models
+  - Ollama local models
+  - OpenAI-compatible APIs
+- Evidence-aware answer generation
+- Baseline vs RAG evaluation pipeline
+- Reusable modular Python code for loading, chunking, retrieval, prompting, generation, and evaluation
+
+## Tech Stack
+
+- Python
+- NumPy
+- pandas
+- scikit-learn
+- sentence-transformers
+- PyTorch
+- HuggingFace Transformers
+- Ollama
+- Requests
+
+## Architecture
+
+```text
 User Query
-    │
-    ▼
-┌─────────────────────────────────────────────┐
-│  Embedding Model (all-MiniLM-L6-v2)        │
-│  → encode query into 384-dim vector         │
-└─────────────┬───────────────────────────────┘
-              │
-              ▼
-┌─────────────────────────────────────────────┐
-│  Retriever (cosine similarity)              │
-│  → find top-k most relevant scene chunks    │
-│  → supports dense / sparse / hybrid modes   │
-└─────────────┬───────────────────────────────┘
-              │
-              ▼
-┌─────────────────────────────────────────────┐
-│  Prompt Builder                             │
-│  → system prompt + retrieved context +      │
-│    user question → structured RAG prompt    │
-└─────────────┬───────────────────────────────┘
-              │
-              ▼
-┌─────────────────────────────────────────────┐
-│  SLM (TinyLlama-1.1B-Chat / configurable)  │
-│  → generate grounded, beginner-friendly     │
-│    answer citing act/scene references       │
-└─────────────┬───────────────────────────────┘
-              │
-              ▼
-         Answer + Evidence
+    |
+    v
+Embedding Model
+sentence-transformers/all-MiniLM-L6-v2
+    |
+    v
+Retriever
+Dense cosine similarity / sparse TF-IDF / hybrid retrieval
+    |
+    v
+Top-k Scene Evidence
+Relevant passages with play, act, and scene metadata
+    |
+    v
+Prompt Builder
+System instruction + retrieved evidence + user question
+    |
+    v
+LLM Backend
+HuggingFace / Ollama / OpenAI-compatible API
+    |
+    v
+Grounded Answer
+Answer with supporting evidence references
+```
+
+## Project Structure
+
+```text
+.
+├── src/
+│   ├── config.py          # Paths, model settings, retrieval settings
+│   ├── data_loader.py     # Dataset loading utilities
+│   ├── chunking.py        # Scene and utterance-window chunking
+│   ├── retrieval.py       # Dense, sparse, and hybrid retrieval
+│   ├── llm_interface.py   # LLM backend abstraction
+│   ├── baseline.py        # Non-RAG baseline generation
+│   ├── rag_chatbot.py     # Interactive RAG chatbot
+│   ├── evaluate.py        # Evaluation pipeline
+│   └── build_index.py     # Retrieval index builder
+├── data/
+│   ├── processed/         # Processed Shakespeare play data
+│   └── index/             # Generated retrieval index
+├── prompts/
+│   └── system_prompt.txt  # System prompt for answer generation
+├── results/               # Evaluation outputs
+├── setup_data.py          # Dataset setup helper
+├── requirements.txt       # Python dependencies
+└── README.md
 ```
 
 ## Quick Start
 
-### 1. Install dependencies
+### 1. Create a virtual environment
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+### 2. Install dependencies
+
+```bash
+python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 2. Set up dataset
+If you run into NumPy compatibility issues with PyTorch, use NumPy 1.x:
+
+```bash
+pip install "numpy<2" --force-reinstall
+```
+
+### 3. Prepare the dataset
 
 ```bash
 python setup_data.py
 ```
 
-This copies the Shakespeare dataset files into `data/processed/`.
-
-### 3. Build the retrieval index
+### 4. Build the retrieval index
 
 ```bash
 python src/build_index.py
 ```
 
-This loads the dataset, creates scene-level chunks, generates embeddings,
-and saves the index for fast reuse.
+This loads the processed Shakespeare data, creates retrieval chunks, generates embeddings, and saves the retrieval index under `data/index/`.
 
-### 4. Run the interactive chatbot
+### 5. Run the chatbot
 
 ```bash
 python src/rag_chatbot.py
 ```
 
-### 5. Run the evaluation pipeline
+Example question:
 
-```bash
-# Instructor questions only
-python src/evaluate.py
-
-# Include group-designed questions
-python src/evaluate.py --include-group
+```text
+Who is Hamlet?
 ```
 
-Results are saved to `results/evaluation_results.csv` and `.json`.
+Exit the chatbot with:
 
-## LLM Backend Configuration
+```text
+quit
+```
 
-The system supports three LLM backends, configured via environment variables:
+## Using Ollama
 
-### HuggingFace (default — local SLM)
+Ollama is the recommended local backend for quick testing.
+
+Start the Ollama server in one terminal:
 
 ```bash
-set HF_MODEL_NAME=TinyLlama/TinyLlama-1.1B-Chat-v1.0
-set LLM_BACKEND=huggingface
+ollama serve
+```
+
+In another terminal, run:
+
+```bash
+cd path/to/William_Shakespeare_SLM_RAG
+source .venv/bin/activate
+
+ollama pull tinyllama
+
+export LLM_BACKEND=ollama
+export OLLAMA_MODEL=tinyllama
+
 python src/rag_chatbot.py
 ```
 
-### Ollama (local server)
+## Using HuggingFace
+
+The default backend is HuggingFace. It downloads and runs a local model through `transformers`.
 
 ```bash
-set LLM_BACKEND=ollama
-set OLLAMA_MODEL=tinyllama
+export LLM_BACKEND=huggingface
+export HF_MODEL_NAME=TinyLlama/TinyLlama-1.1B-Chat-v1.0
+
 python src/rag_chatbot.py
 ```
 
-### OpenAI-compatible API
+## Using an OpenAI-Compatible API
+
+You can also connect the chatbot to any OpenAI-compatible local or hosted API.
 
 ```bash
-set LLM_BACKEND=openai_compatible
-set OPENAI_API_BASE=http://localhost:1234/v1
-set OPENAI_MODEL=local-model
+export LLM_BACKEND=openai_compatible
+export OPENAI_API_BASE=http://localhost:1234/v1
+export OPENAI_API_KEY=not-needed
+export OPENAI_MODEL=local-model
+
 python src/rag_chatbot.py
 ```
 
-## Project Structure
+## Configuration
 
-```
-├── src/
-│   ├── config.py          # Centralised configuration
-│   ├── data_loader.py     # Dataset loading (JSON + JSONL)
-│   ├── chunking.py        # Scene-level chunking with enrichment
-│   ├── retrieval.py       # Dense/sparse/hybrid retrieval
-│   ├── llm_interface.py   # Multi-backend LLM abstraction
-│   ├── baseline.py        # Baseline system (no retrieval)
-│   ├── rag_chatbot.py     # RAG pipeline + interactive chat
-│   ├── evaluate.py        # Evaluation pipeline
-│   └── build_index.py     # Index build + sanity check
-├── data/
-│   ├── processed/         # Play JSON/JSONL files
-│   └── index/             # Saved retrieval index
-├── prompts/
-│   └── system_prompt.txt  # System instruction for the SLM
-├── results/               # Evaluation outputs
-├── report/                # Assignment report
-├── setup_data.py          # One-time data setup script
-├── requirements.txt       # Python dependencies
-└── README.md              # This file
+Core settings are centralized in `src/config.py`.
+
+Useful options include:
+
+```python
+DEFAULT_TOP_K = 5
+EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+LLM_BACKEND = "huggingface"
+HF_MODEL_NAME = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+OLLAMA_MODEL = "tinyllama"
+MAX_NEW_TOKENS = 256
+TEMPERATURE = 0.7
+CHUNK_STRATEGY = "scene"
 ```
 
-## Design Decisions
+For faster or more deterministic local responses, lowering generation length and temperature can help:
 
-### Chunking Strategy: Scene-Level
-
-We use **scene-level chunks** as the primary retrieval unit because:
-- Each scene is a self-contained dramatic episode
-- Scene text length (200–800 tokens) fits within SLM context windows
-- Instructor-provided summaries and keywords improve retrieval accuracy
-- Conversational flow and stage directions are preserved
-
-### Embedding Model: all-MiniLM-L6-v2
-
-Chosen for its balance of quality and efficiency:
-- 384-dimensional embeddings
-- ~80 MB model size
-- Strong performance on semantic similarity benchmarks
-- Fast encoding (~5,000 sentences/second on GPU)
-
-### SLM: TinyLlama-1.1B-Chat
-
-Selected as the default local model because:
-- 1.1B parameters — fits in ≤4 GB VRAM
-- Chat-finetuned with ChatML template
-- Apache-2.0 licence (no restrictions)
-- Adequate quality for grounded QA tasks
-
-### Retrieval: Dense + Optional Hybrid
-
-- **Dense mode** (default): cosine similarity on sentence embeddings
-- **Hybrid mode**: weighted combination of dense + TF-IDF sparse scores
-- Hybrid mode improves recall for keyword-heavy queries (character names, locations)
+```python
+MAX_NEW_TOKENS = 128
+TEMPERATURE = 0.2
+```
 
 ## Evaluation
 
-The evaluation pipeline scores responses on 5 criteria (1-5 scale):
+Run the evaluation pipeline:
+
+```bash
+python src/evaluate.py
+```
+
+The evaluation compares baseline generation against RAG-based generation and saves outputs to:
+
+```text
+results/evaluation_results.csv
+results/evaluation_results.json
+```
+
+The scoring dimensions include:
 
 | Criterion | Description |
-|-----------|-------------|
-| Correctness | Is the answer factually accurate? |
-| Grounding | Is the answer supported by retrieved evidence? |
-| Retrieval Relevance | Are the retrieved passages relevant? |
-| Usefulness | Would a beginner find this helpful? |
-| Style Quality | Is the language clear and appropriate? |
+| --- | --- |
+| Correctness | Whether the answer is factually accurate |
+| Grounding | Whether the answer is supported by retrieved evidence |
+| Retrieval Relevance | Whether retrieved passages are relevant |
+| Usefulness | Whether the answer is helpful to a beginner |
+| Style Quality | Whether the response is clear and readable |
 
-Both baseline (no retrieval) and RAG responses are generated for each
-question, enabling direct comparison.
+## Retrieval Design
+
+The default retrieval unit is a scene-level chunk. This works well for Shakespeare QA because each scene usually contains a coherent dramatic event, character interaction, or plot development.
+
+The retriever supports:
+
+- Dense retrieval using sentence-transformer embeddings
+- Sparse retrieval using TF-IDF
+- Hybrid retrieval combining dense and sparse scores
+
+Scene metadata such as play title, act, scene, summary, and keywords is included in chunk text to improve retrieval quality for both semantic and keyword-based questions.
+
+## Example Output
+
+```text
+You: Why does Hamlet delay his revenge?
+
+--- Retrieved Evidence ---
+
+[Rank 1 | Score: 0.6489]
+[Hamlet, Act 3, Scene 1]
+  Summary: Hamlet reflects on existence, rejects Ophelia, and Claudius suspects danger.
+
+[Rank 2 | Score: 0.6339]
+[Hamlet, Act 2, Scene 2]
+  Summary: Rosencrantz and Guildenstern arrive; Hamlet plans to use players to test Claudius.
+
+--- Answer ---
+Hamlet delays his revenge because he wants stronger proof that Claudius is guilty. In Act 2, Scene 2, he decides to use the visiting players to stage a performance that mirrors the murder and observe Claudius's reaction. This shows that Hamlet is cautious and reflective rather than immediately impulsive.
+```
+
+## Notes
+
+- The quality of generated answers depends heavily on the selected LLM backend.
+- Smaller local models such as TinyLlama are fast to set up but may produce factual errors.
+- For stronger answers, use a larger local model through Ollama or connect an OpenAI-compatible API.
+- If an old retrieval index fails to load after changing NumPy versions, rebuild it with `python src/build_index.py`.
+
+## Future Improvements
+
+- Add a Streamlit or FastAPI web interface
+- Add reranking for retrieved scenes
+- Add citation formatting with exact line references
+- Improve hallucination resistance with stricter prompt validation
+- Add automated retrieval metrics such as recall@k and MRR
+- Package the project with a cleaner CLI entry point
+```

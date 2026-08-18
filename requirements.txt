@@ -1,0 +1,9 @@
+numpy
+pandas
+scikit-learn
+sentence-transformers
+tqdm
+torch
+transformers
+accelerate
+requests
